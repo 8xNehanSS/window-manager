@@ -17,28 +17,32 @@ const (
 	modNoRepeat = 0x4000
 )
 
-// defaultHotkey resizes the active window. Win+Alt+R and Win+Alt+W are taken
-// by Windows itself, Ctrl+Alt combos clash with AltGr on many keyboard layouts.
-const defaultHotkey = "Win+Alt+Z"
+// defaultHotkey resizes the active window. Windows itself doesn't use Win+`;
+// Windows Terminal's optional quake mode does. Ctrl+Alt combos are avoided
+// because they clash with AltGr on many keyboard layouts.
+const defaultHotkey = "Win+`"
 
 type hotkey struct {
 	mods uint32 // modAlt | modControl | modShift | modWin
 	vk   uint32 // virtual-key code
 }
 
-// Non-alphanumeric keys accepted in a hotkey, with their display names.
+// Non-alphanumeric keys accepted in a hotkey. The first name listed for a key
+// is the one displayed.
 var namedKeys = []struct {
 	name string
 	vk   uint32
 }{
+	{"-", 0xBD}, {"Minus", 0xBD}, // VK_OEM_MINUS, the main keyboard's - key
+	{"`", 0xC0}, {"Backtick", 0xC0}, // VK_OEM_3, the key above Tab on US layouts
 	{"Space", 0x20}, {"Enter", 0x0D}, {"Tab", 0x09},
 	{"Left", 0x25}, {"Up", 0x26}, {"Right", 0x27}, {"Down", 0x28},
 	{"Insert", 0x2D}, {"Delete", 0x2E}, {"Home", 0x24}, {"End", 0x23},
 	{"PageUp", 0x21}, {"PageDown", 0x22},
 }
 
-// parseHotkey parses strings like "Win+Alt+Z" or "ctrl + shift + F5". It needs
-// at least one modifier and exactly one key: A–Z, 0–9, F1–F24 or a named key.
+// parseHotkey parses strings like "Win+-" or "ctrl + shift + F5". It needs at
+// least one modifier and exactly one key: A–Z, 0–9, F1–F24 or a named key.
 func parseHotkey(s string) (hotkey, error) {
 	var hk hotkey
 	for _, part := range strings.Split(s, "+") {

@@ -21,7 +21,7 @@ const (
 // config is persisted as JSON, by default in %APPDATA%\window-manager\config.json.
 type config struct {
 	Percent int `json:"percent"`
-	// Hotkey resizes the active window, e.g. "Win+Alt+Z". Empty disables it.
+	// Hotkey resizes the active window, e.g. "Win+`". Empty disables it.
 	Hotkey string `json:"hotkey"`
 
 	path       string

@@ -63,6 +63,61 @@ func resizeWindow(hwnd uintptr, percent int) error {
 	return err
 }
 
+// resizeOrMaximize is the hotkey action. It maximises hwnd if the window is
+// already about percent% of its screen, and otherwise resizes it to that size
+// (restoring it first if it is maximised). Pressing the hotkey repeatedly
+// therefore switches between the chosen size and maximised.
+func resizeOrMaximize(hwnd uintptr, percent int) (maximized bool, err error) {
+	if isWindow(hwnd) && !isZoomed(hwnd) && !isIconic(hwnd) && canMaximize(hwnd) {
+		if near, err := nearTargetSize(hwnd, percent); err == nil && near {
+			showWindow(hwnd, swMaximize)
+			if !isZoomed(hwnd) {
+				return false, errors.New("Windows didn't let it be maximised; it may be running as administrator")
+			}
+			return true, nil
+		}
+	}
+	return false, resizeWindow(hwnd, percent)
+}
+
+// canMaximize reports whether the window has a maximise button; apps without
+// one usually don't expect to be maximised.
+func canMaximize(hwnd uintptr) bool {
+	return getWindowLong(hwnd, gwlStyle)&wsMaximizeBox != 0
+}
+
+// nearTargetSize reports whether hwnd's visible frame is already about the
+// size resizeWindow would give it, wherever it is on the screen.
+func nearTargetSize(hwnd uintptr, percent int) (bool, error) {
+	mi, err := monitorInfoForWindow(hwnd)
+	if err != nil {
+		return false, err
+	}
+	frame, err := extendedFrameBounds(hwnd)
+	if err != nil {
+		if frame, err = getWindowRect(hwnd); err != nil {
+			return false, err
+		}
+	}
+	return sizeNear(frame, targetRect(mi.RcMonitor, mi.RcWork, percent), mi.RcMonitor), nil
+}
+
+// sizeNear compares only width and height, allowing 2% of the monitor (at
+// least 16 px) either way, because some apps round their size, e.g. terminals
+// that size themselves in whole characters.
+func sizeNear(got, want, monitor rect) bool {
+	tolW := max(16, monitor.width()/50)
+	tolH := max(16, monitor.height()/50)
+	return abs32(got.width()-want.width()) <= tolW && abs32(got.height()-want.height()) <= tolH
+}
+
+func abs32(v int32) int32 {
+	if v < 0 {
+		return -v
+	}
+	return v
+}
+
 func plausibleBorder(sides ...int32) bool {
 	for _, s := range sides {
 		if s < 0 || s > 64 {

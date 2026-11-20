@@ -51,7 +51,7 @@ type app struct {
 
 	hotkeyApplied bool   // applyHotkey has run at least once
 	hotkeySpec    string // config value it last applied
-	hotkeyName    string // canonical name while registered, e.g. "Win+Alt+Z"
+	hotkeyName    string // canonical name while registered, e.g. "Win+`"
 	hotkeyStatus  string // menu text describing the hotkey state
 }
 
@@ -295,7 +295,8 @@ func (a *app) resize(w windowInfo, percent int) {
 	setForegroundWindow(w.hwnd)
 }
 
-// resizeActiveWindow handles the hotkey.
+// resizeActiveWindow handles the hotkey: it resizes the active window, or
+// maximises it if it is already about the configured size.
 func (a *app) resizeActiveWindow() {
 	a.refreshConfig()
 	hwnd := getForegroundWindow()
@@ -306,7 +307,7 @@ func (a *app) resizeActiveWindow() {
 		a.notify("Can't resize this window", "The active window has a fixed size or is part of Windows.", niifInfo)
 		return
 	}
-	if err := resizeWindow(hwnd, a.cfg.Percent); err != nil {
+	if _, err := resizeOrMaximize(hwnd, a.cfg.Percent); err != nil {
 		a.notify("Couldn't resize "+truncate(windowText(hwnd), 40), err.Error(), niifWarning)
 	}
 }

@@ -129,6 +129,11 @@ func TestParseHotkey(t *testing.T) {
 		canonical string
 	}{
 		{"Win+Alt+Z", modWin | modAlt, 'Z', "Win+Alt+Z"},
+		{"Win+-", modWin, 0xBD, "Win+-"},
+		{"Win+`", modWin, 0xC0, "Win+`"},
+		{"win + backtick", modWin, 0xC0, "Win+`"},
+		{"win + minus", modWin, 0xBD, "Win+-"},
+		{"Ctrl+Shift+-", modControl | modShift, 0xBD, "Ctrl+Shift+-"},
 		{" ctrl + shift + f5 ", modControl | modShift, 0x74, "Ctrl+Shift+F5"},
 		{"Alt+Control+Windows+pagedown", modAlt | modControl | modWin, 0x22, "Win+Ctrl+Alt+PageDown"},
 		{"z+alt", modAlt, 'Z', "Alt+Z"},
@@ -179,5 +184,28 @@ func TestConfigHotkey(t *testing.T) {
 	}
 	if err := c.reload(); err != nil || c.Hotkey != "" {
 		t.Errorf("hotkey = %q (err %v), want empty", c.Hotkey, err)
+	}
+}
+
+func TestSizeNear(t *testing.T) {
+	monitor := rect{0, 0, 1920, 1080} // tolerance: 38 px wide, 21 px high
+	want := rect{288, 138, 288 + 1344, 138 + 756}
+	tests := []struct {
+		name string
+		got  rect
+		near bool
+	}{
+		{"exact", want, true},
+		{"same size, moved elsewhere", rect{0, 0, 1344, 756}, true},
+		{"rounded to whole characters", rect{290, 140, 290 + 1330, 140 + 748}, true},
+		{"just inside tolerance", rect{0, 0, 1344 + 38, 756 - 21}, true},
+		{"too wide", rect{0, 0, 1344 + 39, 756}, false},
+		{"too short", rect{0, 0, 1344, 756 - 22}, false},
+		{"a different size entirely", rect{60, 60, 480, 340}, false},
+	}
+	for _, tt := range tests {
+		if got := sizeNear(tt.got, want, monitor); got != tt.near {
+			t.Errorf("%s: sizeNear = %v, want %v", tt.name, got, tt.near)
+		}
 	}
 }

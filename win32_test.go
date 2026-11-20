@@ -15,7 +15,6 @@ const (
 	wsOverlappedWindow = 0x00CF0000
 	wsFixedCaption     = 0x00C80000 // WS_CAPTION | WS_SYSMENU, no sizing border
 	swShowNoActivate   = 4
-	swMaximize         = 3
 	swMinimize         = 6
 )
 
@@ -177,4 +176,38 @@ func TestRegisterHotkey(t *testing.T) {
 		t.Error("registering the same hotkey twice should fail")
 	}
 	unregisterHotKey(hwnd, 7)
+}
+
+func TestResizeOrMaximize(t *testing.T) {
+	hwnd := newTestWindow(t, "window-manager test: toggle", wsOverlappedWindow)
+
+	press := func(wantMaximized bool) {
+		t.Helper()
+		maximized, err := resizeOrMaximize(hwnd, 60)
+		if err != nil {
+			t.Fatalf("resizeOrMaximize: %v", err)
+		}
+		if maximized != wantMaximized || isZoomed(hwnd) != wantMaximized {
+			t.Fatalf("maximized = %v, IsZoomed = %v, want %v", maximized, isZoomed(hwnd), wantMaximized)
+		}
+		if !wantMaximized {
+			mi, _ := monitorInfoForWindow(hwnd)
+			got, _ := extendedFrameBounds(hwnd)
+			if want := targetRect(mi.RcMonitor, mi.RcWork, 60); !near(got, want, 1) {
+				t.Fatalf("frame = %+v, want %+v", got, want)
+			}
+		}
+	}
+	press(false) // 400x300 → 60%
+	press(true)  // already 60% → maximised
+	press(false) // maximised → back to 60%
+	press(true)
+
+	// A window with no maximise button is only ever resized.
+	noMax := newTestWindow(t, "window-manager test: no maximise box", wsOverlappedWindow&^wsMaximizeBox)
+	for i := 0; i < 2; i++ {
+		if maximized, err := resizeOrMaximize(noMax, 60); err != nil || maximized || isZoomed(noMax) {
+			t.Fatalf("press %d: maximized = %v, err = %v; want a plain resize", i+1, maximized, err)
+		}
+	}
 }

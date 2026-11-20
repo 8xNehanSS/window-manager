@@ -46,6 +46,7 @@ const (
 	tpmReturnCmd   = 0x0100
 
 	wsThickFrame   = 0x00040000
+	wsMaximizeBox  = 0x00010000
 	wsExToolWindow = 0x00000080
 	wsExAppWindow  = 0x00040000
 	wsExNoActivate = 0x08000000
@@ -54,6 +55,7 @@ const (
 
 	swShowNormal = 1
 	swRestore    = 9
+	swMaximize   = 3
 
 	swpNoZOrder   = 0x0004
 	swpNoActivate = 0x0010

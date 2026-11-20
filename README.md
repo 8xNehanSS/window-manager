@@ -3,7 +3,8 @@
 A small Windows notification-area (system tray) app written in Go. Right-click
 (or left-click) the tray icon to see the open windows that can be resized; pick
 one and it is resized to **60%** of its screen (configurable) and centred. Or
-press **Win+Alt+Z** to do the same to the active window.
+press **Win+`** (Windows key + the key above Tab) to do the same to the active
+window; press it again to maximise.
 
 - Pure Go + Win32 API (`golang.org/x/sys/windows`), no cgo, single ~2.7 MB exe.
 - Works per monitor: a window is resized on whichever screen it is on.
@@ -44,11 +45,28 @@ The menu shows:
 
 ### Hotkey
 
-Press **Win+Alt+Z** to resize whichever window is active to the current size.
-Unlike the menu, the hotkey also works on resizable windows that don't show in
-Alt+Tab, such as some secondary windows. If another app already uses the
-combination, you'll get a notification and the menu says so; pick another one
-in the config file.
+Press **Win+`** (the Windows key plus the `` ` `` key above Tab, on US-layout
+keyboards) to resize whichever window is active to the current size. Unlike the
+menu, the hotkey also works on resizable windows that don't show in Alt+Tab,
+such as some secondary windows.
+
+Pressing it repeatedly switches between that size and maximised:
+
+| The active window is…                          | Win+` does this                 |
+| ---------------------------------------------- | ------------------------------- |
+| maximised                                      | resizes it to the chosen size   |
+| already about the chosen size                  | maximises it                    |
+| any other size                                 | resizes it to the chosen size   |
+
+"About the chosen size" means its width and height are within 2% of the screen
+(at least 16 px) of the target, wherever the window is placed. That slack
+covers apps that round their size, such as terminals that size themselves in
+whole characters. Windows without a maximise button are only ever resized.
+
+If another app already uses the combination, you'll get a notification and the
+menu says so; pick another one in the config file. Windows Terminal can also
+use Win+` to show its drop-down ("quake") window, if that's set up. Whichever
+app starts first gets the combination.
 
 ### Configuration
 
@@ -57,7 +75,7 @@ Settings live in `%APPDATA%\window-manager\config.json`:
 ```json
 {
   "percent": 60,
-  "hotkey": "Win+Alt+Z"
+  "hotkey": "Win+`"
 }
 ```
 
@@ -65,10 +83,11 @@ Settings live in `%APPDATA%\window-manager\config.json`:
   window is centred in the area not covered by the taskbar and never made larger
   than it.
 - `hotkey` is one or more of `Win`, `Ctrl`, `Alt`, `Shift` plus one key: `A`–`Z`,
-  `0`–`9`, `F1`–`F24`, `Space`, `Enter`, `Tab`, `Left`, `Right`, `Up`, `Down`,
-  `Insert`, `Delete`, `Home`, `End`, `PageUp` or `PageDown`. Use `""` to turn
-  the hotkey off. Avoid `Ctrl+Alt` combinations: on many keyboard layouts they
-  are the same as AltGr and would block typing some characters.
+  `0`–`9`, `F1`–`F24`, `` ` `` (or `Backtick`), `-` (or `Minus`), `Space`,
+  `Enter`, `Tab`, `Left`, `Right`, `Up`, `Down`, `Insert`, `Delete`, `Home`,
+  `End`, `PageUp` or `PageDown`. Use `""` to turn the hotkey off. Avoid
+  `Ctrl+Alt` combinations: on many keyboard layouts they are the same as AltGr
+  and would block typing some characters.
 
 The file is re-read every time the menu opens or the hotkey is pressed, so
 edits apply without a restart.
