@@ -121,3 +121,63 @@ func TestDrawIcon(t *testing.T) {
 		}
 	}
 }
+
+func TestParseHotkey(t *testing.T) {
+	valid := []struct {
+		in        string
+		mods, vk  uint32
+		canonical string
+	}{
+		{"Win+Alt+Z", modWin | modAlt, 'Z', "Win+Alt+Z"},
+		{" ctrl + shift + f5 ", modControl | modShift, 0x74, "Ctrl+Shift+F5"},
+		{"Alt+Control+Windows+pagedown", modAlt | modControl | modWin, 0x22, "Win+Ctrl+Alt+PageDown"},
+		{"z+alt", modAlt, 'Z', "Alt+Z"},
+		{"Win+1", modWin, '1', "Win+1"},
+		{"Ctrl+F24", modControl, 0x87, "Ctrl+F24"},
+	}
+	for _, tt := range valid {
+		hk, err := parseHotkey(tt.in)
+		if err != nil {
+			t.Errorf("parseHotkey(%q): %v", tt.in, err)
+			continue
+		}
+		if hk.mods != tt.mods || hk.vk != tt.vk || hk.String() != tt.canonical {
+			t.Errorf("parseHotkey(%q) = {mods %#x vk %#x %q}, want {mods %#x vk %#x %q}",
+				tt.in, hk.mods, hk.vk, hk.String(), tt.mods, tt.vk, tt.canonical)
+		}
+	}
+
+	for _, in := range []string{"", "Z", "Win+Alt", "Ctrl+Foo", "Ctrl+A+B", "Ctrl++", "Ctrl+F0", "Ctrl+F25"} {
+		if hk, err := parseHotkey(in); err == nil {
+			t.Errorf("parseHotkey(%q) = %v, want an error", in, hk)
+		}
+	}
+}
+
+func TestConfigHotkey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+
+	// An older config without "hotkey" gets the default added to the file.
+	if err := os.WriteFile(path, []byte(`{"percent": 70}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, err := loadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Percent != 70 || c.Hotkey != defaultHotkey {
+		t.Errorf("got percent %d hotkey %q, want 70 and %q", c.Percent, c.Hotkey, defaultHotkey)
+	}
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), `"hotkey": "`+defaultHotkey+`"`) {
+		t.Errorf("default hotkey was not written to the file:\n%s", data)
+	}
+
+	// An empty hotkey means "off" and must survive a reload.
+	if err := os.WriteFile(path, []byte(`{"percent": 70, "hotkey": ""}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.reload(); err != nil || c.Hotkey != "" {
+		t.Errorf("hotkey = %q (err %v), want empty", c.Hotkey, err)
+	}
+}

@@ -25,6 +25,7 @@ const (
 	windowClass   = "WindowManagerTrayWindow"
 	singletonName = `Local\window-manager-tray`
 	trayIconID    = 1
+	hotkeyID      = 1
 	maxTitleRunes = 60
 
 	// Menu command IDs.
@@ -37,6 +38,9 @@ const (
 // Sizes offered in the "Size" submenu. Any other value can be set in config.json.
 var presets = []int{50, 60, 70, 75, 80, 90}
 
+// version is set at build time: -ldflags "-X main.version=v1.2.3".
+var version = "dev"
+
 type app struct {
 	hwnd              uintptr
 	icon              uintptr
@@ -44,6 +48,11 @@ type app struct {
 	taskbarCreatedMsg uint32
 	menuOpen          bool
 	lastConfigErr     string
+
+	hotkeyApplied bool   // applyHotkey has run at least once
+	hotkeySpec    string // config value it last applied
+	hotkeyName    string // canonical name while registered, e.g. "Win+Alt+Z"
+	hotkeyStatus  string // menu text describing the hotkey state
 }
 
 var (
@@ -123,6 +132,8 @@ func newApp() (*app, error) {
 	if cfgErr != nil {
 		a.reportConfigError(cfgErr)
 	}
+	a.applyHotkey()
+	a.updateTooltip()
 	return a, nil
 }
 
@@ -151,7 +162,15 @@ func wndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 			a.showMenu()
 		}
 		return 0
+	case wmHotkey:
+		if wparam == hotkeyID {
+			a.resizeActiveWindow()
+		}
+		return 0
 	case wmDestroy:
+		if a.hotkeyName != "" {
+			unregisterHotKey(a.hwnd, hotkeyID)
+		}
 		a.removeTrayIcon()
 		procPostQuitMessage.Call(0)
 		return 0
@@ -172,11 +191,7 @@ func (a *app) showMenu() {
 	a.menuOpen = true
 	defer func() { a.menuOpen = false }()
 
-	if err := a.cfg.reload(); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		a.reportConfigError(err)
-	} else {
-		a.lastConfigErr = ""
-	}
+	a.refreshConfig()
 	percent := a.cfg.Percent
 	targets := listResizableWindows(a.hwnd)
 
@@ -253,6 +268,7 @@ func (a *app) buildMenu(percent int, targets []windowInfo) (uintptr, error) {
 		item{sizeMenu, mfString, cmdEditConfig, "Custom size… (edit config.json)"},
 		item{menu, mfSeparator, 0, ""},
 		item{menu, mfString | mfPopup, sizeMenu, fmt.Sprintf("Size: %d%%", percent)},
+		item{menu, mfString | mfGrayed, 0, a.hotkeyStatus},
 		item{menu, mfSeparator, 0, ""},
 		item{menu, mfString, cmdExit, "Exit"},
 	)
@@ -277,6 +293,68 @@ func (a *app) resize(w windowInfo, percent int) {
 		return
 	}
 	setForegroundWindow(w.hwnd)
+}
+
+// resizeActiveWindow handles the hotkey.
+func (a *app) resizeActiveWindow() {
+	a.refreshConfig()
+	hwnd := getForegroundWindow()
+	if hwnd == 0 || hwnd == a.hwnd {
+		return
+	}
+	if !canResize(hwnd) {
+		a.notify("Can't resize this window", "The active window has a fixed size or is part of Windows.", niifInfo)
+		return
+	}
+	if err := resizeWindow(hwnd, a.cfg.Percent); err != nil {
+		a.notify("Couldn't resize "+truncate(windowText(hwnd), 40), err.Error(), niifWarning)
+	}
+}
+
+// refreshConfig re-reads config.json so hand edits apply without a restart.
+func (a *app) refreshConfig() {
+	if err := a.cfg.reload(); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		a.reportConfigError(err)
+	} else {
+		a.lastConfigErr = ""
+	}
+	if a.applyHotkey() {
+		a.updateTooltip()
+	}
+}
+
+// applyHotkey (re)registers the configured hotkey if it changed since the last
+// call, and reports whether it did anything.
+func (a *app) applyHotkey() bool {
+	spec := a.cfg.Hotkey
+	if a.hotkeyApplied && spec == a.hotkeySpec {
+		return false
+	}
+	a.hotkeyApplied, a.hotkeySpec = true, spec
+	if a.hotkeyName != "" {
+		unregisterHotKey(a.hwnd, hotkeyID)
+		a.hotkeyName = ""
+	}
+
+	if spec == "" {
+		a.hotkeyStatus = "Hotkey off (set one in config.json)"
+		return true
+	}
+	hk, err := parseHotkey(spec)
+	if err != nil {
+		a.hotkeyStatus = "Hotkey in config.json is invalid"
+		a.notify("Hotkey not set", "config.json: "+err.Error(), niifWarning)
+		return true
+	}
+	if err := registerHotKey(a.hwnd, hotkeyID, hk.mods|modNoRepeat, hk.vk); err != nil {
+		a.hotkeyStatus = "Hotkey " + hk.String() + " is used by another app"
+		a.notify("Hotkey "+hk.String()+" is taken",
+			"Another app already uses it. Choose a different one in config.json (Size → Custom size…).", niifWarning)
+		return true
+	}
+	a.hotkeyName = hk.String()
+	a.hotkeyStatus = "Resize active window\t" + a.hotkeyName
+	return true
 }
 
 func (a *app) setPercent(p int) {
@@ -309,7 +387,15 @@ func (a *app) reportConfigError(err error) {
 }
 
 func (a *app) tooltip() string {
-	return fmt.Sprintf("%s – resize windows to %d%%", appName, a.cfg.Percent)
+	tip := appName
+	if version != "dev" {
+		tip += " " + version
+	}
+	tip += fmt.Sprintf(" – resize to %d%%", a.cfg.Percent)
+	if a.hotkeyName != "" {
+		tip += " (" + a.hotkeyName + ")"
+	}
+	return tip
 }
 
 func (a *app) baseNotifyData() notifyIconData {

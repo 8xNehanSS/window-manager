@@ -19,6 +19,7 @@ const (
 	wmDestroy   = 0x0002
 	wmLButtonUp = 0x0202
 	wmRButtonUp = 0x0205
+	wmHotkey    = 0x0312
 	wmApp       = 0x8000
 	wmTrayIcon  = wmApp + 1
 
@@ -101,6 +102,9 @@ var (
 	procDestroyMenu                   = user32.NewProc("DestroyMenu")
 	procTrackPopupMenu                = user32.NewProc("TrackPopupMenu")
 	procSetForegroundWindow           = user32.NewProc("SetForegroundWindow")
+	procGetForegroundWindow           = user32.NewProc("GetForegroundWindow")
+	procRegisterHotKey                = user32.NewProc("RegisterHotKey")
+	procUnregisterHotKey              = user32.NewProc("UnregisterHotKey")
 	procGetCursorPos                  = user32.NewProc("GetCursorPos")
 	procEnumWindows                   = user32.NewProc("EnumWindows")
 	procIsWindow                      = user32.NewProc("IsWindow")
@@ -256,6 +260,23 @@ func destroyWindow(hwnd uintptr) {
 
 func setForegroundWindow(hwnd uintptr) {
 	procSetForegroundWindow.Call(hwnd)
+}
+
+func getForegroundWindow() uintptr {
+	r, _, _ := procGetForegroundWindow.Call()
+	return r
+}
+
+func registerHotKey(hwnd uintptr, id int32, mods, vk uint32) error {
+	r, _, err := procRegisterHotKey.Call(hwnd, uintptr(id), uintptr(mods), uintptr(vk))
+	if r == 0 {
+		return win32Error("RegisterHotKey", err)
+	}
+	return nil
+}
+
+func unregisterHotKey(hwnd uintptr, id int32) {
+	procUnregisterHotKey.Call(hwnd, uintptr(id))
 }
 
 func getCursorPos() point {

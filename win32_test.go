@@ -23,6 +23,9 @@ var testClassRegistered bool
 
 func newTestWindow(t *testing.T, title string, style uint32) uintptr {
 	t.Helper()
+	if testing.Short() {
+		t.Skip("opens real windows; skipped with -short")
+	}
 	runtime.LockOSThread()
 	t.Cleanup(runtime.UnlockOSThread)
 	enableDPIAwareness()
@@ -131,4 +134,47 @@ func TestCreateIconFromPNG(t *testing.T) {
 func near(a, b rect, tol int32) bool {
 	d := func(x, y int32) bool { return x-y <= tol && y-x <= tol }
 	return d(a.Left, b.Left) && d(a.Top, b.Top) && d(a.Right, b.Right) && d(a.Bottom, b.Bottom)
+}
+
+func TestCanResize(t *testing.T) {
+	owner := newTestWindow(t, "window-manager test: owner", wsOverlappedWindow)
+	fixed := newTestWindow(t, "window-manager test: fixed", wsFixedCaption)
+
+	// A resizable window owned by another one: the hotkey may resize it, but
+	// the tray menu leaves owned windows out.
+	owned, _, err := procCreateWindowExW.Call(0,
+		uintptr(unsafe.Pointer(utf16Ptr("WindowManagerTestWindow"))),
+		uintptr(unsafe.Pointer(utf16Ptr("window-manager test: owned"))),
+		wsOverlappedWindow, 150, 150, 300, 200, owner, 0, getModuleHandle(), 0)
+	if owned == 0 {
+		t.Fatal(win32Error("CreateWindowExW", err))
+	}
+	t.Cleanup(func() { destroyWindow(owned) })
+	showWindow(owned, swShowNoActivate)
+
+	if !canResize(owned) {
+		t.Error("canResize(owned resizable window) = false")
+	}
+	if isResizableAppWindow(owned) {
+		t.Error("owned window should not be listed in the menu")
+	}
+	if canResize(fixed) {
+		t.Error("canResize(fixed-size window) = true")
+	}
+}
+
+func TestRegisterHotkey(t *testing.T) {
+	hwnd := newTestWindow(t, "window-manager test: hotkey", wsOverlappedWindow)
+	// An unusual combination, so it can't clash with the running app.
+	hk, err := parseHotkey("Win+Ctrl+Alt+Shift+F23")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := registerHotKey(hwnd, 7, hk.mods|modNoRepeat, hk.vk); err != nil {
+		t.Fatalf("registerHotKey(%s): %v", hk, err)
+	}
+	if err := registerHotKey(hwnd, 8, hk.mods|modNoRepeat, hk.vk); err == nil {
+		t.Error("registering the same hotkey twice should fail")
+	}
+	unregisterHotKey(hwnd, 7)
 }

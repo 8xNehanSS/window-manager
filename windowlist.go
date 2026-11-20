@@ -61,24 +61,31 @@ func enumWindowsProc(hwnd, _ uintptr) uintptr {
 	return 1 // keep enumerating
 }
 
-// isResizableAppWindow reports whether hwnd is a window a user would think of
-// as an application window (the kind that shows in Alt+Tab) with a sizing border.
-func isResizableAppWindow(hwnd uintptr) bool {
-	if !isWindowVisible(hwnd) {
-		return false
-	}
-	style := getWindowLong(hwnd, gwlStyle)
-	exStyle := getWindowLong(hwnd, gwlExStyle)
+// canResize reports whether hwnd is a visible, responsive window with a sizing
+// border that isn't part of the Windows shell. The hotkey uses this directly.
+func canResize(hwnd uintptr) bool {
 	switch {
-	case style&wsThickFrame == 0: // fixed-size window
+	case !isWindowVisible(hwnd):
 		return false
-	case exStyle&wsExToolWindow != 0, exStyle&wsExNoActivate != 0:
-		return false
-	case getWindow(hwnd, gwOwner) != 0 && exStyle&wsExAppWindow == 0: // dialogs and popups
+	case getWindowLong(hwnd, gwlStyle)&wsThickFrame == 0: // fixed-size window
 		return false
 	case isCloaked(hwnd), isHungAppWindow(hwnd):
 		return false
-	case shellClasses[className(hwnd)]:
+	}
+	return !shellClasses[className(hwnd)]
+}
+
+// isResizableAppWindow narrows canResize to what a user would think of as an
+// application window (the kind that shows in Alt+Tab), for the tray menu.
+func isResizableAppWindow(hwnd uintptr) bool {
+	if !canResize(hwnd) {
+		return false
+	}
+	exStyle := getWindowLong(hwnd, gwlExStyle)
+	switch {
+	case exStyle&wsExToolWindow != 0, exStyle&wsExNoActivate != 0:
+		return false
+	case getWindow(hwnd, gwOwner) != 0 && exStyle&wsExAppWindow == 0: // dialogs and popups
 		return false
 	}
 	return strings.TrimSpace(windowText(hwnd)) != ""

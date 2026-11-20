@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const (
@@ -20,8 +21,11 @@ const (
 // config is persisted as JSON, by default in %APPDATA%\window-manager\config.json.
 type config struct {
 	Percent int `json:"percent"`
+	// Hotkey resizes the active window, e.g. "Win+Alt+Z". Empty disables it.
+	Hotkey string `json:"hotkey"`
 
-	path string
+	path       string
+	incomplete bool // the file on disk is missing a setting
 }
 
 func defaultConfigPath() (string, error) {
@@ -33,11 +37,12 @@ func defaultConfigPath() (string, error) {
 }
 
 // loadConfig reads the config at path, creating it with defaults if it does not
-// exist. It always returns a usable config; on error the defaults are kept.
+// exist and adding any settings it lacks (so they're visible to edit). It
+// always returns a usable config; on error the defaults are kept.
 func loadConfig(path string) (*config, error) {
-	c := &config{Percent: defaultPercent, path: path}
+	c := &config{Percent: defaultPercent, Hotkey: defaultHotkey, path: path}
 	err := c.reload()
-	if errors.Is(err, fs.ErrNotExist) {
+	if errors.Is(err, fs.ErrNotExist) || (err == nil && c.incomplete) {
 		return c, c.save()
 	}
 	return c, err
@@ -50,16 +55,24 @@ func (c *config) reload() error {
 	if err != nil {
 		return err
 	}
+	// Pointers tell a missing setting (use the default) from an empty one.
 	var file struct {
-		Percent *int `json:"percent"`
+		Percent *int    `json:"percent"`
+		Hotkey  *string `json:"hotkey"`
 	}
 	if err := json.Unmarshal(data, &file); err != nil {
 		return fmt.Errorf("%s is not valid JSON: %w", c.path, err)
 	}
+	c.incomplete = file.Percent == nil || file.Hotkey == nil
 	if file.Percent == nil {
 		c.Percent = defaultPercent
 	} else {
 		c.Percent = clampPercent(*file.Percent)
+	}
+	if file.Hotkey == nil {
+		c.Hotkey = defaultHotkey
+	} else {
+		c.Hotkey = strings.TrimSpace(*file.Hotkey)
 	}
 	return nil
 }
